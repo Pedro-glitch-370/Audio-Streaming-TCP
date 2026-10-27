@@ -1,6 +1,12 @@
 import json
+import os
 import socket
+import sys
 import threading
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 
 from config import (
     DEFAULT_AUDIO, HANDSHAKE_TIMEOUT, HOST, MAX_CLIENTS, PORT, SEND_TIMEOUT,
@@ -33,8 +39,8 @@ def handle_client(conn: socket.socket, addr):
         
         #ajusta o timeout pro envio contínuo de dados pesados
         conn.settimeout(SEND_TIMEOUT)
-
         comando, _, argumento = requisicao.partition(" ")
+        print(f"LOG: comando sem upper é '{comando}' e arg é '{argumento}'")
         comando = comando.upper()
 
         if comando == "LIST":
@@ -46,7 +52,7 @@ def handle_client(conn: socket.socket, addr):
             #processa o pedido de streaming do arquivo, preparando o cliente pra receber o áudio
             nome_arquivo = argumento.strip() or DEFAULT_AUDIO #podemos tirar o default audio dps
             path = stream_handler.obter_caminho_arquivo(nome_arquivo) #procura o arquivo na pasta de áudios
-
+            print(f"LOG: procurando por '{nome_arquivo}' em '{path}'")
             if path is None:
                 _enviar_linha_json(conn, {"status": "error", "message": f"Arquivo não encontrado: {nome_arquivo}"})
                 return

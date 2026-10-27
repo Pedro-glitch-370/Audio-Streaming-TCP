@@ -1,3 +1,1 @@
-#Listar aqui:
-#bibliotecas de manipulação de áudio e fluxo, como o PyAudio
-#bibliotecas de suporte a decodificação, como pydub ou wave nativo do Python
+sounddevice>=0.4.6
