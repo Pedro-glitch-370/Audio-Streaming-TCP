@@ -11,7 +11,7 @@ sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from config import HOST, PORT, BUFFER_SIZE
+from config import HOST, PORT, TAMANHO_BUFFER
 
 def run_client():
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #cria o socket TCP do cliente
@@ -23,7 +23,7 @@ def run_client():
     try:
         with open(output_path, "wb") as f: #abre um arquivo local (received_sample.wav) em modo de escrita binária (wb)
             while True: 
-                chunk = client_socket.recv(BUFFER_SIZE) #fica escutando a rede enquanto o server fica enviando os blocos
+                chunk = client_socket.recv(TAMANHO_BUFFER) #fica escutando a rede enquanto o server fica enviando os blocos
                 if not chunk: #quando chunk vem vazio, o server cabou de enviar os pedaços
                     break
                 f.write(chunk) #cada pedaço recebido é gravado no received_sample.wav
