@@ -1,23 +1,5 @@
 import sounddevice as sd
 
-# Catálogo de músicas: chave = opção do menu, valor = (título, arquivo).
-# Usar tupla em vez de dict interno evita redundância ("titulo", "caminho_arquivo")
-# e deixa o dict curto e escaneável.
-biblioteca_musicas = {
-    "1": ("Natal", "Natal.wav"),
-    "2": ("Hit de carnaval 2027 (bem provavel)", "Celular.wav"),
-    "3": ("Zelda", "Sample.wav"),
-}
-
-
-def escolher_musica(user_escolha):
-    """
-    Retorna (titulo, arquivo) ou (None, None) se a opção for inválida.
-    Usa .get() para cobrir os dois casos sem if extra.
-    """
-    return biblioteca_musicas.get(user_escolha, (None, None))
-
-
 def iniciar_reproducao(buffer, formato):
     """
     Cria e inicia um stream de áudio que consome do buffer.

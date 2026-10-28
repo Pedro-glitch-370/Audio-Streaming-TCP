@@ -87,20 +87,12 @@ def handle_client(conn: socket.socket, addr):
             _enviar_linha_json(conn, {"status": "ok", **info})
             print(f"{tag} enviando {path.name} ({info['tamanho']} bytes)")
 
-            enviados = stream_handler.enviar_arquivo_streaming(
-                conn, path, info["taxa_bytes"], server_evento_stop
-            )
+            enviados = stream_handler.enviar_arquivo_streaming(conn, path, info["taxa_bytes"], server_evento_stop)
             status = "concluída" if enviados == info["tamanho"] else "interrompida"
             print(f"{tag} transmissão {status}, {enviados} bytes")
 
         else:
-            _enviar_linha_json(
-                conn,
-                {
-                    "status": "error",
-                    "message": "Comando inválido. Use LIST ou PLAY <arquivo>",
-                },
-            )
+            _enviar_linha_json(conn,{"status": "error","message": "Comando inválido. Use LIST ou PLAY <arquivo>",})
 
     except (BrokenPipeError, ConnectionResetError, socket.timeout) as e:
         # Cliente desconectou ou parou de responder — é esperado.
