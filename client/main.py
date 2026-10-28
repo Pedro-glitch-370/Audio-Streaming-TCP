@@ -4,12 +4,13 @@ import time
 from client import playlist, socket_client
 
 # Texto do menu em constante — evita prints espalhados e facilita mudar depois.
-MENU = """ =========== SPOTCIN ===========
- [1] Natal
- [2] Hit de carnaval 2027 (bem provavel)
- [3] Zelda
- [0] Sair
-"""
+def montar_menu(arquivos):
+    """Monta o texto do menu a partir da lista de arquivos do servidor."""
+    linhas = [" =========== SPOTCIN ==========="]
+    for i, nome in enumerate(arquivos, start=1):
+        linhas.append(f" [{i}] {nome}")
+    linhas.append(" [0] Sair ")
+    return "\n".join(linhas)
 
 
 def limpar_terminal():
@@ -57,10 +58,22 @@ def tocar_musica(caminho: str):
 
 
 def main():
-    """Loop principal do menu."""
+    # Descobre uma vez o que o servidor oferece (poderia ser a cada iteração)
+    try:
+        arquivos = socket_client.listar_arquivos()
+    except (OSError, RuntimeError, ConnectionError) as e:
+        print(f"\n --- Não foi possível conectar ao servidor: {e} --- \n")
+        return
+
+    if not arquivos:
+        print("\n --- Servidor não tem nenhum áudio disponível --- \n")
+        return
+
+    menu = montar_menu(arquivos)
+
     while True:
         limpar_terminal()
-        print(MENU)
+        print(menu)
         escolha = input(" Escolha uma opção: ")
 
         if escolha == "0":
@@ -68,21 +81,29 @@ def main():
             print("Até logo!!\n")
             time.sleep(2)
             limpar_terminal()
-            return  # sai de main (equivalente ao exit, mas testável)
+            return
 
-        titulo, caminho = playlist.escolher_musica(escolha)
-        if not caminho:
+        # Valida: precisa ser número entre 1 e len(arquivos)
+        try:
+            idx = int(escolha)
+        except ValueError:
+            idx = -1
+
+        if not (1 <= idx <= len(arquivos)):
             print("\n --- Opção inválida! Tente novamente --- \n")
             time.sleep(2)
-            continue  # volta pro topo do loop
+            continue
+
+        titulo = arquivos[idx - 1]        # nome do arquivo = "título" exibido
+        caminho = arquivos[idx - 1]       # o que vai pro servidor no PLAY
 
         limpar_terminal()
         print(f" --- Tocando agora: {titulo} --- \n")
 
-        # try/except aqui: qualquer falha de rede/áudio vira mensagem amigável
-        # sem derrubar o menu.
         try:
             tocar_musica(caminho)
+        except KeyboardInterrupt:
+            print("\n --- Interrompido pelo usuário --- \n")
         except (OSError, RuntimeError, ValueError) as e:
             print(f"\n --- Erro: {e} --- \n")
 

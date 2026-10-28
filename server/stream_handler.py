@@ -102,15 +102,18 @@ def enviar_arquivo_streaming(
     stop_event: threading.Event,
 ) -> int:
     """
-    Envia o arquivo em chunks de TAMANHO_BUFFER, respeitando a taxa do áudio.
+    Envia o arquivo em chunks de TAMANHO_BUFFER, em ritmo contínuo.
 
     Estratégia:
       - primeiros `bytes_prebuffer` bytes → enviados o mais rápido possível
         (preenche o buffer do cliente sem atrasar o início)
-      - a partir daí → pacing: o próximo chunk só sai quando o cliente
-        teria consumido o anterior (evita estourar o buffer do cliente)
+      - a partir daí → pacing: cada chunk é liberado no instante em que
+        o cliente teria terminado de tocar o anterior. Isso mantém o
+        buffer do cliente estável (sem encher nem esvaziar) e o envio
+        é contínuo do ponto de vista do cliente.
 
-    Retorna o total de bytes efetivamente enviados.
+    O relógio de referência é atualizado a cada chunk (não é fixo em
+    `start`), então atrasos pontuais de rede não se acumulam.
     """
     bytes_prebuffer = int(taxa_bytes * SEGUNDOS_PRE_BUFFER)
     bytes_enviados = 0
@@ -122,15 +125,19 @@ def enviar_arquivo_streaming(
             if not chunk:
                 break
 
+            # Momento em que este chunk começa a ser enviado.
+            inicio_chunk = time.monotonic()
             conn.sendall(chunk)
             bytes_enviados += len(chunk)
 
             if bytes_enviados > bytes_prebuffer:
-                # Tempo em que o cliente terminaria de tocar tudo que enviamos.
-                deadline = start + (bytes_enviados - bytes_prebuffer) / taxa_bytes
+                # Quanto tempo o cliente leva pra tocar este chunk.
+                duracao_chunk = len(chunk) / taxa_bytes
+                # Deadline relativo ao INÍCIO do envio deste chunk —
+                # evita acúmulo de atraso entre iterações.
+                deadline = inicio_chunk + duracao_chunk
                 delay = deadline - time.monotonic()
                 if delay > 0:
-                    # wait() em vez de sleep() → reage rápido ao stop_event.
                     stop_event.wait(delay)
 
     return bytes_enviados

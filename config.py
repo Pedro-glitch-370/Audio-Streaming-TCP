@@ -18,7 +18,7 @@ SEND_TIMEOUT = 30                # segundos sem conseguir enviar → derruba
 
 # ── Áudio ────────────────────────────────────────────────────────────
 DIRETORIO_AUDIO = DIRETORIO_BASE / "audio_files"
-EXTENSOES_SUPORTADAS = (".wav", ".mp3")
+EXTENSOES_SUPORTADAS = (".wav")
 
 # Nome deve bater EXATAMENTE com um arquivo real (case-sensitive no Linux).
 DEFAULT_AUDIO = "Sample.wav"

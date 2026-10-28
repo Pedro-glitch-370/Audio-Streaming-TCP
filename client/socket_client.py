@@ -40,7 +40,6 @@ def _ler_cabecalho_wav(fp):
         "tamanho_dados": wav.getnframes() * canais * bytes_amostra,
     }
 
-
 @dataclass
 class Sessao:
     """
@@ -151,3 +150,22 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
 
     threading.Thread(target=receber, daemon=True).start()
     return sessao
+
+def listar_arquivos() -> list[str]:
+    """
+    Pergunta ao servidor quais arquivos ele tem disponíveis (comando LIST).
+
+    Retorna a lista de nomes, ou [] se o servidor responder erro.
+    """
+    sock = socket.create_connection((HOST, PORT), timeout=10)
+    try:
+        sock.sendall(b"LIST\n")
+        linha = sock.makefile("rb").readline()
+        if not linha:
+            raise ConnectionError("Servidor fechou conexão sem responder")
+        info = json.loads(linha)
+        if info.get("status") != "ok":
+            raise RuntimeError(info.get("message", "Erro desconhecido do servidor"))
+        return info["files"]
+    finally:
+        sock.close()
