@@ -1,4 +1,4 @@
-from socket_server import rodar_server
+from server.socket_server import rodar_server
 
 def main():
     try:

@@ -1,54 +1,55 @@
-from pathlib import Path
-from playback_buffer import ler_buffer, buffer_terminou
 import sounddevice as sd
 
-#dict com as músicas do menu;
-#o "caminho_arquivo" é o nome do arquivo na pasta audio_files do server
+# Catálogo de músicas: chave = opção do menu, valor = (título, arquivo).
+# Usar tupla em vez de dict interno evita redundância ("titulo", "caminho_arquivo")
+# e deixa o dict curto e escaneável.
 biblioteca_musicas = {
-    "1": {
-        "titulo": "Natal",
-        "caminho_arquivo": "./audio_files/Natal.wav"
-    },
-    "2": {
-        "titulo": "Hit de carnaval 2027 (bem provavel)",
-        "caminho_arquivo": "./audio_files/Celular.wav"
-    },
-    "3": {
-        "titulo": "Zelda",
-        "caminho_arquivo": "./audio_files/Sample.wav"
-    }
+    "1": ("Natal", "Natal.wav"),
+    "2": ("Hit de carnaval 2027 (bem provavel)", "Celular.wav"),
+    "3": ("Zelda", "Sample.wav"),
 }
 
+
 def escolher_musica(user_escolha):
-    titulo = ""
-    caminho_completo = ""
+    """
+    Retorna (titulo, arquivo) ou (None, None) se a opção for inválida.
+    Usa .get() para cobrir os dois casos sem if extra.
+    """
+    return biblioteca_musicas.get(user_escolha, (None, None))
 
-    #verifica se na biblioteca_musicas há a musica que o usuario quer e guarda na variavel que é 
-    #exportada para a main para a reproducao
-    if user_escolha in biblioteca_musicas:
-        titulo = biblioteca_musicas[user_escolha]["titulo"]
-        caminho_completo = biblioteca_musicas[user_escolha]["caminho_arquivo"]
-        caminho = Path(caminho_completo).name 
-        return titulo, caminho
-        
-    # Retorna None caso o usuário escolha uma opção inválida
-    return None, None
 
-#toca o que for chegando no playback_buffer;
-#devolve o stream pra main poder parar quando quiser
 def iniciar_reproducao(buffer, formato):
-    bytes_por_frame = formato["canais"] * formato["bytes_amostra"]
-    silencio = b"\x80" if formato["bytes_amostra"] == 1 else b"\x00" #WAV de 8 bits usa 128 como silêncio
+    """
+    Cria e inicia um stream de áudio que consome do buffer.
 
-    #a placa de som chama essa função sozinha, de tempo em tempo, pedindo mais áudio
-    def callback(outdata, frames, time_info, status):
+    O sounddevice chama `callback` sozinho em uma thread própria,
+    pedindo `frames` frames a cada vez. Nunca devemos bloquear aqui
+    (por isso `buffer.ler` é non-blocking: se não tem dado, devolve menos).
+    """
+
+    # Quantos bytes formam 1 frame (1 amostra de todos os canais juntos).
+    # Ex.: estéreo 16-bit → 2 canais * 2 bytes = 4 bytes por frame.
+    bytes_por_frame = formato["canais"] * formato["bytes_amostra"]
+
+    # Valor que representa silêncio no formato:
+    # - uint8 é unsigned, então 0 seria o mínimo negativo; 128 é o "zero".
+    # - int16/int24/int32/float32 usam 0 como centro.
+    silencio = b"\x80" if formato["bytes_amostra"] == 1 else b"\x00"
+
+    def callback(outdata, frames, _time_info, _status):
         n = frames * bytes_por_frame
-        dados = ler_buffer(buffer, n)
+        dados = buffer.ler(n)
+
+        # Se o buffer devolveu menos que o pedido, completa com silêncio.
+        # Isso acontece no começo (antes do buffer encher) e no fim (último frame).
         if len(dados) < n:
-            dados += silencio * (n - len(dados)) #faltou dado (rede lenta ou fim da música), completa com silêncio
-            if buffer_terminou(buffer):
+            dados += silencio * (n - len(dados))
+
+            # Se a rede já acabou e o buffer esvaziou, para o stream.
+            if buffer.terminou():
                 outdata[:] = dados
-                raise sd.CallbackStop #acabou a música, toca o último bloco e para
+                raise sd.CallbackStop  # exceção usada pelo sounddevice pra encerrar
+
         outdata[:] = dados
 
     stream = sd.RawOutputStream(

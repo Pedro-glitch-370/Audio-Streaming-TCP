@@ -1,20 +1,35 @@
+"""
+Configuração compartilhada entre cliente e servidor.
+
+IMPORTANTE: cliente e servidor DEVEM usar o mesmo config.py para que
+tamanhos de buffer, timeouts e caminhos batam.
+"""
 from pathlib import Path
 
-DIRETORIO_BASE = Path(__file__).resolve().parent  #caminho absoluto da pasta raiz do projeto
+DIRETORIO_BASE = Path(__file__).resolve().parent
 
-#constantes da rede
-HOST = "127.0.0.1" #IP onde o servidor vai rodar
-PORT = 8080 #porta padrão onde o server escuta as conexões TCP que chegam
-TAMANHO_BUFFER = 8192 #limite de 8KB por bloco
-MAX_CLIENTS = 50 #permite 50 conexões ao mesmo tempo
-HANDSHAKE_TIMEOUT = 10 #permite 10 segundos pro cliente enviar sua requisição, depois derruba
-SEND_TIMEOUT = 30 #permite 30 segundos sem conseguir enviar, depois derruba
+# ── Rede ─────────────────────────────────────────────────────────────
+HOST = "127.0.0.1"
+PORT = 8080
+TAMANHO_BUFFER = 8192            # bytes por chunk enviado/recebido
+MAX_CLIENTS = 50                 # conexões simultâneas no servidor
+HANDSHAKE_TIMEOUT = 10           # segundos para o cliente enviar o comando
+SEND_TIMEOUT = 30                # segundos sem conseguir enviar → derruba
 
-#constantes do áudio
-DIRETORIO_AUDIO = DIRETORIO_BASE / "audio_files" #define o caminho pra pasta audio_files
-DEFAULT_AUDIO = "sample.wav" #nome do arquivo de áudio padrão que será carregado
-EXTENSOES_SUPORTADAS = (".wav", ".mp3") #extensões de áudio permitidas pelo sistema
+# ── Áudio ────────────────────────────────────────────────────────────
+DIRETORIO_AUDIO = DIRETORIO_BASE / "audio_files"
+EXTENSOES_SUPORTADAS = (".wav", ".mp3")
 
-#constantes do streaming
-SEGUNDOS_PRE_BUFFER = 2.0 #permite 2 segundos de áudio pro servidor enviar sem atraso e já na conexão, pra encher o buffer do cliente antes de reproduzir
-FALLBACK_BITRATE_KBPS = 128 #taxa de de 128 kbps pra fallback de arquivos onde não é fácil calcular a taxa de transmissão
+# Nome deve bater EXATAMENTE com um arquivo real (case-sensitive no Linux).
+DEFAULT_AUDIO = "Sample.wav"
+
+# ── Streaming ────────────────────────────────────────────────────────
+# O cliente usa este valor para dimensionar o pré-buffer local.
+# O servidor usa o mesmo valor para calcular quantos bytes enviar
+# "na velocidade máxima" antes de começar a respeitar a taxa do áudio.
+SEGUNDOS_PRE_BUFFER = 2.0
+
+# Usado para estimar taxa_bytes quando o formato não permite calcular
+# (ex.: .mp3, ou WAV corrompido). Deve ser compatível com o arquivo real,
+# senão o servidor envia mais rápido/lento do que o cliente consome.
+FALLBACK_BITRATE_KBPS = 128
