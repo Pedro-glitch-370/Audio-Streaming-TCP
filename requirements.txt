@@ -1,1 +1,2 @@
 sounddevice>=0.4.6
+miniaudio>=1.59
