@@ -6,7 +6,7 @@ Protocolo (linha única de comando, depois dados):
     Cliente → Servidor:   PLAY <arquivo>\n
     Servidor → Cliente:   {"status":"ok", "nome_arquivo":..., "tamanho":...,
                            "taxa_bytes":..., "tamanho_chunk":...}\n
-    Servidor → Cliente:   <WAV inteiro: cabeçalho + dados>
+    Servidor → Cliente:   <WAV ou MP3 inteiro: cabeçalho + dados>
 
     Cliente → Servidor:   LIST\n
     Servidor → Cliente:   {"status":"ok", "files":[...]}\n
@@ -14,7 +14,7 @@ Protocolo (linha única de comando, depois dados):
     Erros:                {"status":"error", "message":"..."}\n
 
 O cliente que acompanha este servidor é `client/socket_client.py`.
-Ele faz o parser manual do WAV, então o servidor NÃO deve enviar
+Ele faz o parser manual do WAV (e decodifica o MP3), então o servidor NÃO deve enviar
 nada além do arquivo bruto após o JSON.
 """
 import json
