@@ -4,12 +4,36 @@ import threading
 import wave
 from dataclasses import dataclass
 
+import miniaudio
+
 from config import HOST, PORT, TAMANHO_BUFFER, SEGUNDOS_PRE_BUFFER
 from client.playback_buffer import Buffer
 
 # Mapeia bytes por amostra → dtype do sounddevice.
 # Só cobre PCM inteiro; WAV float32 exige parser manual (wave da stdlib não lê).
 _DTYPES_PCM = {1: "uint8", 2: "int16", 3: "int24", 4: "int32"}
+
+# MP3 é decodificado no cliente para PCM neste formato fixo.
+# Se o arquivo tiver outra taxa/canais, o miniaudio converte.
+_FORMATO_MP3 = {
+    "canais": 2,
+    "taxa_amostragem": 44100,
+    "bytes_amostra": 2,
+    "dtype": "int16",
+}
+_TAXA_PCM_MP3 = 44100 * 2 * 2  # bytes por segundo do MP3 já decodificado
+
+
+class _FonteRede(miniaudio.StreamableSource):
+    """
+    Entrega ao decodificador MP3 os bytes conforme chegam do socket.
+    """
+
+    def __init__(self, ler):
+        self.ler = ler
+
+    def read(self, num_bytes: int) -> bytes:
+        return self.ler(num_bytes)
 
 
 def _ler_cabecalho_wav(fp):
@@ -92,8 +116,14 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
         if info.get("status") != "ok":
             raise RuntimeError(info.get("message", "Erro desconhecido do servidor"))
 
-        # Depois do JSON vem o WAV cru — pulamos o cabeçalho dele.
-        formato = _ler_cabecalho_wav(fp)
+        eh_mp3 = info["nome_arquivo"].lower().endswith(".mp3")
+
+        if eh_mp3:
+            # No MP3 o arquivo inteiro é dado de áudio.
+            formato = dict(_FORMATO_MP3, tamanho_dados=info["tamanho"])
+        else:
+            # Depois do JSON vem o WAV cru — pulamos o cabeçalho dele.
+            formato = _ler_cabecalho_wav(fp)
 
     except Exception:
         # Qualquer falha aqui significa que não vamos mais usar o socket.
@@ -101,7 +131,9 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
         raise
 
     # Quantos bytes queremos acumular antes de liberar a reprodução.
-    buffer = Buffer(int(info["taxa_bytes"] * SEGUNDOS_PRE_BUFFER))
+    # No MP3 o buffer guarda o áudio já decodificado, então usa a taxa do PCM.
+    taxa_buffer = _TAXA_PCM_MP3 if eh_mp3 else info["taxa_bytes"]
+    buffer = Buffer(int(taxa_buffer * SEGUNDOS_PRE_BUFFER))
     sessao = Sessao(buffer=buffer, formato=formato, sock=sock)
 
     # Quantos bytes ainda faltam receber. Se o servidor informou um tamanho
@@ -148,7 +180,65 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
             fp.close()
             sock.close()
 
-    threading.Thread(target=receber, daemon=True).start()
+    def ler_mp3(n: int) -> bytes:
+        """
+        Chamado pelo decodificador MP3: lê do socket sem passar do total.
+        """
+        nonlocal restante
+
+        if sessao._parado or restante == 0:
+            return b""
+        if restante is not None:
+            n = min(n, restante)
+
+        try:
+            # read1 devolve o que já chegou, sem esperar juntar n bytes.
+            chunk = fp.read1(n)
+        except OSError as e:
+            # O decodificador engoliria a exceção, então registramos aqui.
+            if not sessao._parado:
+                sessao._erro = f"Erro ao receber dados: {e}"
+            return b""
+
+        if not chunk:
+            if restante and not sessao._parado:
+                sessao._erro = f"Conexão encerrada com {restante} bytes faltando"
+            return b""
+
+        if restante is not None:
+            restante -= len(chunk)
+        return chunk
+
+    def receber_mp3():
+        """
+        Thread de rede do MP3: decodifica conforme os bytes chegam.
+        """
+        try:
+            decodificador = miniaudio.stream_any(
+                _FonteRede(ler_mp3),
+                miniaudio.FileFormat.MP3,
+                nchannels=_FORMATO_MP3["canais"],
+                sample_rate=_FORMATO_MP3["taxa_amostragem"],
+            )
+            for pcm in decodificador:
+                if sessao._parado:
+                    break
+                buffer.adicionar_chunk(pcm.tobytes())
+
+        except miniaudio.MiniaudioError as e:
+            if not sessao._parado:
+                sessao._erro = f"Erro ao decodificar MP3: {e}"
+
+        finally:
+            buffer.finalizar()
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            fp.close()
+            sock.close()
+
+    threading.Thread(target=receber_mp3 if eh_mp3 else receber, daemon=True).start()
     return sessao
 
 def listar_arquivos() -> list[str]:
