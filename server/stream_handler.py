@@ -3,9 +3,9 @@ Funções de leitura/envio de áudio do lado do servidor.
 
 Contrato com o cliente (definido em client/socket_client.py):
   - `obter_info_streaming` retorna o JSON que o cliente espera receber
-    ANTES do WAV. Campos obrigatórios:
+    ANTES do WAV/MP3. Campos obrigatórios:
         nome_arquivo, tamanho, taxa_bytes, tamanho_chunk
-  - `enviar_arquivo_streaming` envia o WAV INTEIRO (cabeçalho + dados).
+  - `enviar_arquivo_streaming` envia o WAV/MP3 INTEIRO (cabeçalho + dados).
     O cliente faz o parsing do cabeçalho sozinho.
 
 Garantia importante: o total de bytes enviados é exatamente `tamanho`
@@ -17,6 +17,8 @@ import threading
 import time
 import wave
 from pathlib import Path
+
+import miniaudio
 
 from config import (
     DIRETORIO_AUDIO,
@@ -65,7 +67,8 @@ def obter_taxa_transmissao(path: Path) -> int:
     Bytes por segundo que o áudio consome.
 
     Para .wav: lê do cabeçalho (preciso).
-    Para .mp3 / falha: usa FALLBACK_BITRATE_KBPS.
+    Para .mp3: tamanho do arquivo / duração.
+    Falha: usa FALLBACK_BITRATE_KBPS.
     """
     if path.suffix.lower() == ".wav":
         try:
@@ -74,6 +77,13 @@ def obter_taxa_transmissao(path: Path) -> int:
                 if rate > 0:
                     return rate
         except (wave.Error, EOFError):
+            pass
+    elif path.suffix.lower() == ".mp3":
+        try:
+            duracao = miniaudio.mp3_get_file_info(str(path)).duration
+            if duracao > 0:
+                return int(path.stat().st_size / duracao)
+        except miniaudio.MiniaudioError:
             pass
     return FALLBACK_BITRATE_KBPS * 1000 // 8
 
