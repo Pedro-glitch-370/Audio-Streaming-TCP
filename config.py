@@ -18,7 +18,7 @@ SEND_TIMEOUT = 30                # segundos sem conseguir enviar → derruba
 
 # ── Áudio ────────────────────────────────────────────────────────────
 DIRETORIO_AUDIO = DIRETORIO_BASE / "audio_files"
-EXTENSOES_SUPORTADAS = (".wav")
+EXTENSOES_SUPORTADAS = (".wav", ".mp3")
 
 # Nome deve bater EXATAMENTE com um arquivo real (case-sensitive no Linux).
 DEFAULT_AUDIO = "Sample.wav"
@@ -30,6 +30,6 @@ DEFAULT_AUDIO = "Sample.wav"
 SEGUNDOS_PRE_BUFFER = 2.0
 
 # Usado para estimar taxa_bytes quando o formato não permite calcular
-# (ex.: .mp3, ou WAV corrompido). Deve ser compatível com o arquivo real,
+# (ex.: MP3 ou WAV corrompido). Deve ser compatível com o arquivo real,
 # senão o servidor envia mais rápido/lento do que o cliente consome.
 FALLBACK_BITRATE_KBPS = 128
