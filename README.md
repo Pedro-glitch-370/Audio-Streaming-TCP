@@ -1,6 +1,6 @@
 # Audio Streaming TCP
 
-Streaming de áudio WAV via sockets TCP.
+Streaming de áudio WAV ou MP3 via sockets TCP.
 O servidor divide o arquivo em blocos e envia em ritmo de reprodução (tempo real) para cada cliente.
 O cliente guarda os blocos num buffer, espera um pré-buffer encher e, depois, toca na placa de som.
 
@@ -26,7 +26,7 @@ audio-streaming-tcp/
 ```
 
 > Os nomes dos arquivos em `audio_files/` precisam bater **exatamente** (maiúsculas
-> e minúsculas) com os de `client/playlist.py`. Só são aceitos WAV (PCM) no cliente.
+> e minúsculas) com os de `client/playlist.py`. São aceitos WAV (PCM) e MP3 no cliente.
 
 ## 1. Instalação
 
@@ -56,13 +56,13 @@ Abra **dois terminais na raiz do projeto** (com o ambiente ativado no do cliente
 
 **Terminal 1 - Servidor:**
 ```
-python server/main.py
+python -m server.main
 ```
 Deve aparecer: `Server escutando em 127.0.0.1:8080.`
 
 **Terminal 2 - Cliente:**
 ```
-python client/main.py
+python -m client.main
 ```
 Escolha uma música (1, 2 ou 3). Depois de uma mensagem "Carregando buffer..." a música
 começa. Aperte **ENTER** para parar e voltar ao menu. Apertar `0` sai.
