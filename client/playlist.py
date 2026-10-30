@@ -1,11 +1,10 @@
 import sounddevice as sd
 
+# Função pra criar e iniciar um stream de áudio que consome do buffer
 def iniciar_reproducao(buffer, formato):
     """
-    Cria e inicia um stream de áudio que consome do buffer.
-
-    O sounddevice chama `callback` sozinho em uma thread própria,
-    pedindo `frames` frames a cada vez. Nunca devemos bloquear aqui
+    OBS: O sounddevice chama `callback` sozinho em uma thread própria,
+    pedindo frames a cada vez. Nunca devemos bloquear aqui
     (por isso `buffer.ler` é non-blocking: se não tem dado, devolve menos).
     """
 
@@ -38,6 +37,7 @@ def iniciar_reproducao(buffer, formato):
         samplerate=formato["taxa_amostragem"],
         channels=formato["canais"],
         dtype=formato["dtype"],
+        latency="high",
         callback=callback,
     )
     stream.start()

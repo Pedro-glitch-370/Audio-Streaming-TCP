@@ -1,21 +1,22 @@
 """
-Servidor TCP concorrente do Spotcin.
+Visão Geral do Protocolo de Comunicação, que é baseado em linha de comando:
 
-Protocolo (linha única de comando, depois dados):
-
+    As solicitações de reprodução e os dados retornados são:
     Cliente → Servidor:   PLAY <arquivo>\n
     Servidor → Cliente:   {"status":"ok", "nome_arquivo":..., "tamanho":...,
                            "taxa_bytes":..., "tamanho_chunk":...}\n
     Servidor → Cliente:   <WAV ou MP3 inteiro: cabeçalho + dados>
 
+    As listagens de arquivos e os dados retornados são:
     Cliente → Servidor:   LIST\n
     Servidor → Cliente:   {"status":"ok", "files":[...]}\n
 
+    Tratamento de erro:
     Erros:                {"status":"error", "message":"..."}\n
 
-O cliente que acompanha este servidor é `client/socket_client.py`.
-Ele faz o parser manual do WAV (e decodifica o MP3), então o servidor NÃO deve enviar
-nada além do arquivo bruto após o JSON.
+O cliente que acompanha este servidor (`client/socket_client.py`) faz parsing manual do WAV
+e decodificação do MP3, então, depois do JSON enviado, o servidor não deve enviar nada além
+do arquivo bruto para o cliente.
 """
 import json
 import socket
@@ -37,14 +38,12 @@ vagas_clientes = threading.BoundedSemaphore(MAX_CLIENTS)
 # Sinaliza o loop principal (acept) para parar.
 server_evento_stop = threading.Event()
 
-
+# Função que serializa um dict como JSON em uma linha (terminada em \\n).
 def _enviar_linha_json(conn: socket.socket, payload: dict):
-    """Serializa um dict como JSON em uma linha (terminada em \\n)."""
     conn.sendall(json.dumps(payload).encode("utf-8") + b"\n")
 
-
+# Função que roda em thread própria atendendo um cliente até o fim da conexão
 def handle_client(conn: socket.socket, addr):
-    """Atende UM cliente até o fim da conexão. Roda em thread própria."""
     tag = f"[{addr[0]}:{addr[1]}]"
     print(f"{tag} conectado")
 
@@ -95,7 +94,7 @@ def handle_client(conn: socket.socket, addr):
             _enviar_linha_json(conn,{"status": "error","message": "Comando inválido. Use LIST ou PLAY <arquivo>",})
 
     except (BrokenPipeError, ConnectionResetError, socket.timeout) as e:
-        # Cliente desconectou ou parou de responder — é esperado.
+        # Cliente desconectou ou parou de responder (é esperado).
         print(f"{tag} desconectou ou ficou inativo ({e.__class__.__name__})")
     except Exception as e:
         print(f"{tag} erro: {e!r}")
@@ -106,9 +105,9 @@ def handle_client(conn: socket.socket, addr):
             vagas_clientes.release()
         print(f"{tag} encerrado")
 
-
+# Função que representa o loop principal;
+# Ela aceita conexões e delega cada uma para uma thread
 def rodar_server():
-    """Loop principal: aceita conexões e delega cada uma para uma thread."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((HOST, PORT))
@@ -126,7 +125,7 @@ def rodar_server():
             except socket.timeout:
                 continue
             except OSError:
-                break  # socket fechado por outro motivo — encerra
+                break  # socket fechado por outro motivo; encerra
 
             if not vagas_clientes.acquire(blocking=False):
                 try:

@@ -1,9 +1,3 @@
-"""
-Configuração compartilhada entre cliente e servidor.
-
-IMPORTANTE: cliente e servidor DEVEM usar o mesmo config.py para que
-tamanhos de buffer, timeouts e caminhos batam.
-"""
 from pathlib import Path
 
 DIRETORIO_BASE = Path(__file__).resolve().parent
@@ -20,8 +14,8 @@ SEND_TIMEOUT = 30                # segundos sem conseguir enviar → derruba
 DIRETORIO_AUDIO = DIRETORIO_BASE / "audio_files"
 EXTENSOES_SUPORTADAS = (".wav", ".mp3")
 
-# Nome deve bater EXATAMENTE com um arquivo real (case-sensitive no Linux).
-DEFAULT_AUDIO = "Sample.wav"
+# Nome deve bater exatamente com um arquivo real (case-sensitive no Linux).
+DEFAULT_AUDIO = "(Zelda) Saria Song.wav"
 
 # ── Streaming ────────────────────────────────────────────────────────
 # O cliente usa este valor para dimensionar o pré-buffer local.

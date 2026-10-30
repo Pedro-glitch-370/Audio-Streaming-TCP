@@ -5,25 +5,21 @@ import time
 
 from client import playlist, socket_client
 
-# Texto do menu em constante — evita prints espalhados e facilita mudar depois.
+# Função pra montar o texto do menu a partir da lista de arquivos do servidor
 def montar_menu(arquivos):
-    """Monta o texto do menu a partir da lista de arquivos do servidor."""
     linhas = [" =========== SPOTCIN ==========="]
     for i, nome in enumerate(arquivos, start=1):
         linhas.append(f" [{i}] {nome}")
     linhas.append(" [0] Sair ")
     return "\n".join(linhas)
 
-
+# Função pra limpar a tela em Windows (cls) e Unix (clear)
 def limpar_terminal():
-    """Limpa a tela em Windows (cls) e Unix (clear)."""
     os.system("cls" if os.name == "nt" else "clear")
 
-
+# Função que retorna True se o Enter for pressionado até o tempo que foi setado, sem travar como o input()
 def enter_pressionado(espera: float) -> bool:
-    """
-    Retorna True se o ENTER for pressionado até o tempo que foi setado, sem travar como o input().
-    """
+    # Bloco pra sistemas Windows
     if os.name == "nt":
         import msvcrt
 
@@ -33,54 +29,49 @@ def enter_pressionado(espera: float) -> bool:
                 return True
         return False
 
+    # Bloco pra sistemas Linux/macOS
     if select.select([sys.stdin], [], [], espera)[0]:
         sys.stdin.readline()
         return True
     return False
 
-
+# Função que faz o ciclo completo de uma música;
+# Conecta, espera o pré-buffer, toca até o Enter
+# for tocado ou a música acabar e garante a limpeza no finally
 def tocar_musica(caminho: str):
-    """
-    Faz o ciclo completo de uma música: conecta, espera pré-buffer,
-    toca até ENTER ou até a música acabar, e garante o cleanup no finally.
-
-    Isolar isso em uma função deixa o loop do menu curto e legível,
-    e o finally cuida de parar/reprodução mesmo se algo der errado no meio.
-    """
     sessao = socket_client.iniciar_streaming(caminho)
-    reproducao = None  # ainda não criada — usada no finally
+    reproducao = None 
 
     try:
         print(" Carregando buffer...")
         sessao.buffer.aguardar_prebuffer()
 
-        # Se a rede falhou antes do pré-buffer encher, aborta aqui.
+        # Se a rede falhou antes do pré-buffer encher, aborta aqui
         if sessao.get_erro():
             raise RuntimeError(sessao.get_erro())
 
-        # Começa a tocar. A partir daqui a reprodução roda em thread própria
-        # do sounddevice; este código só aguarda o ENTER ou o fim da música.
+        # Começa a tocar. A partir daqui a reprodução roda em uma thread própria do sounddevice;
+        # Esse código vai aguardar até o Enter ser pressionado ou o áudio acabar
         reproducao = playlist.iniciar_reproducao(sessao.buffer, sessao.formato)
 
         print(" Pressione ENTER a qualquer momento para parar a música.")
         while reproducao.active and not enter_pressionado(0.1):
             pass
 
-        # Pode ter havido erro de rede durante a reprodução (não fatal).
+        # Tratamento de erro
         if sessao.get_erro():
             print(f" --- Transmissão interrompida: {sessao.get_erro()} --- \n")
         print(" --- Áudio encerrado! --- \n")
 
     finally:
-        # Cleanup garantido: encerra o stream de áudio e avisa o servidor.
+        # Cleanup onde encerra o stream de áudio e avisa o servidor
         if reproducao:
             reproducao.stop()
             reproducao.close()
         sessao.parar()
 
-
+# Função principal; revela o que o servidor oferece
 def main():
-    # Descobre uma vez o que o servidor oferece (poderia ser a cada iteração)
     try:
         arquivos = socket_client.listar_arquivos()
     except (OSError, RuntimeError, ConnectionError) as e:
@@ -105,7 +96,7 @@ def main():
             limpar_terminal()
             return
 
-        # Valida: precisa ser número entre 1 e len(arquivos)
+        # Pra validar, o número digitado tem que ser entre 1 e len(arquivos)
         try:
             idx = int(escolha)
         except ValueError:
@@ -131,8 +122,6 @@ def main():
 
         time.sleep(1)
 
-
-# Só roda se o arquivo for executado diretamente — permite importar main
-# em testes sem disparar o menu.
+# Só roda se o arquivo for executado diretamente
 if __name__ == "__main__":
     main()

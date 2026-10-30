@@ -2,20 +2,12 @@ import queue
 import threading
 from dataclasses import dataclass, field
 
-
+# Classe que representa o estado do buffer de reprodução
+# O fluxo de dados é: thread de rede  --(adicionar_chunk)-->  fila  --(ler)-->  callback de áudio
 @dataclass
 class Buffer:
-    """
-    Estado do buffer de reprodução.
-
-    O fluxo de dados é:
-        thread de rede  --(adicionar_chunk)-->  fila  --(ler)-->  callback de áudio
-
-    A ideia é desacoplar o ritmo da rede do ritmo da placa de som.
-    A rede pode ser rápida (baixa vários blocos de uma vez) ou lenta
-    (o player fica em silêncio até chegar mais dado), sem que um trave o outro.
-
-    Usamos dataclass em vez de dict porque:
+    """ 
+    OBS: Usamos dataclass em vez de dict porque:
       - evita erro de digitação em chave ("fila" vs "fial")
       - o editor/autocomplete enxerga os campos
       - os métodos ficam junto do estado que manipulam
@@ -44,8 +36,8 @@ class Buffer:
     # avisa o player que não virão mais dados.
     fim: threading.Event = field(default_factory=threading.Event)
 
+    # Função chamada pela thread de rede a cada bloco baixado
     def adicionar_chunk(self, chunk: bytes):
-        """Chamado pela thread de rede a cada bloco baixado."""
         self.fila.put(chunk)
         self.recebido += len(chunk)
 
@@ -54,34 +46,32 @@ class Buffer:
         if self.recebido >= self.bytes_prebuffer:
             self.pronto.set()
 
+    # Função chamada quando a rede acaba (seja por fim normal ou por erro)
     def finalizar(self):
-        """Chamado quando a rede acabou (fim normal ou erro)."""
         self.fim.set()
-        # Também sinaliza 'pronto' para o player não ficar travado
+        # Também sinaliza 'pronto' pro player não ficar travado
         # esperando um pré-buffer que nunca vai chegar (ex.: conexão caiu cedo).
         self.pronto.set()
 
+    # Função que trava o fluxo principal até o pré-buffer ficar cheio
     def aguardar_prebuffer(self, timeout=None) -> bool:
-        """Trava o fluxo principal até o pré-buffer estar cheio."""
         # Retorna False se estourar o timeout (o chamador pode checar se quiser).
         return self.pronto.wait(timeout)
 
+    # Função chamada pelo callback de áudio;
+    # Ela retorna até n_bytes, podendo ser menos
     def ler(self, n_bytes: int) -> bytes:
-        """Chamado pelo callback de áudio. Retorna até n_bytes, podendo ser menos."""
         # Vai drenando a fila até ter o suficiente ou até ela esvaziar.
         while len(self.sobra) < n_bytes:
             try:
                 self.sobra += self.fila.get_nowait()
             except queue.Empty:
-                break  # rede ainda não entregou o resto — devolve o que tem
+                break
 
         dados = bytes(self.sobra[:n_bytes])
-        del self.sobra[:n_bytes]  # remove o que foi consumido
+        del self.sobra[:n_bytes]  # comando del pra remover o que foi consumido
         return dados
 
+    # Função que retorna True quando a rede fecha, a fila fica vazia e não há sobra restante;
     def terminou(self) -> bool:
-        """
-        True apenas quando: rede fechou E fila vazia E sem sobra.
-        Ou seja, o player já consumiu tudo que existia — pode parar.
-        """
         return self.fim.is_set() and self.fila.empty() and not self.sobra

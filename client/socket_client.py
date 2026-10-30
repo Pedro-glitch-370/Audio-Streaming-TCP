@@ -23,11 +23,8 @@ _FORMATO_MP3 = {
 }
 _TAXA_PCM_MP3 = 44100 * 2 * 2  # bytes por segundo do MP3 já decodificado
 
-
+# Classe interna que entrega os bytes ao decodificador MP3 conforme eles chegam do do socket
 class _FonteRede(miniaudio.StreamableSource):
-    """
-    Entrega ao decodificador MP3 os bytes conforme chegam do socket.
-    """
 
     def __init__(self, ler):
         self.ler = ler
@@ -35,15 +32,8 @@ class _FonteRede(miniaudio.StreamableSource):
     def read(self, num_bytes: int) -> bytes:
         return self.ler(num_bytes)
 
-
+# Função que lê o cabeçalho do WAV e deixa `fp` posicionado no primeiro byte de áudio
 def _ler_cabecalho_wav(fp):
-    """
-    Lê o cabeçalho do WAV e deixa `fp` posicionado no primeiro byte de áudio.
-
-    Usar o módulo `wave` da stdlib substitui ~40 linhas de parsing manual
-    com `struct`. Ele já sabe pular blocos auxiliares (LIST, fact, etc.) e
-    respeitar o padding de tamanho ímpar.
-    """
     wav = wave.open(fp, "rb")
 
     if wav.getcomptype() != "NONE":
@@ -64,10 +54,11 @@ def _ler_cabecalho_wav(fp):
         "tamanho_dados": wav.getnframes() * canais * bytes_amostra,
     }
 
+# Classe que carrega tudo que a main precisa pra tocar e parar um áudio
 @dataclass
 class Sessao:
     """
-    Agrupa tudo que a main precisa para tocar e parar uma música:
+    OBS: Os elementos que essa classe agrupa são:
       - o Buffer (consumido pelo player)
       - os metadados de formato
       - o socket (para fechar quando a main pedir)
@@ -77,29 +68,29 @@ class Sessao:
     buffer: Buffer
     formato: dict
     sock: socket.socket
-    _parado: bool = False   # flag lida pela thread de rede a cada iteração
+    _parado: bool = False
     _erro: str | None = None
 
+    # Função que retorna uma mensagem de erro ou None;
+    # A main chama ela após o streaming do áudio
     def get_erro(self):
-        """Retorna mensagem de erro (ou None). A main checa isso após o streaming."""
         return self._erro
 
+    # Função que encerra a thread de rede e o socket;
+    # A main chama ela no finally
     def parar(self):
-        """Chamado pela main no finally — encerra a thread de rede e o socket."""
         self._parado = True
         try:
             # shutdown força o read() em andamento a retornar imediatamente.
             self.sock.shutdown(socket.SHUT_RDWR)
         except OSError:
-            pass  # socket já fechado — ignora
+            pass  # socket já tá fechado
         self.sock.close()
 
-
+# Função que conecta ao servidor, envia PLAY, lê cabeçalho
+# e dispara a thread que baixa o áudio em segundo plano
 def iniciar_streaming(nome_arquivo: str) -> Sessao:
-    """
-    Conecta ao servidor, envia PLAY, lê cabeçalho e dispara a thread
-    que baixa o áudio em segundo plano. Retorna assim que a thread começa.
-    """
+
     sock = socket.create_connection((HOST, PORT), timeout=30)
 
     try:
@@ -122,7 +113,7 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
             # No MP3 o arquivo inteiro é dado de áudio.
             formato = dict(_FORMATO_MP3, tamanho_dados=info["tamanho"])
         else:
-            # Depois do JSON vem o WAV cru — pulamos o cabeçalho dele.
+            # Depois do JSON vem o WAV cru; pulamos o cabeçalho dele.
             formato = _ler_cabecalho_wav(fp)
 
     except Exception:
@@ -141,10 +132,10 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
     # exatamente quando parar (evita ler lixo ou ficar esperando EOF).
     restante = formato["tamanho_dados"] or None
     if restante is None or restante > info["tamanho"]:
-        restante = None  # não confiável — lê até a conexão fechar
+        restante = None  # não confiável; lê até a conexão fechar
 
+    # Função que baixa blocos e joga no buffer até acabar ou parar
     def receber():
-        """Thread de rede: baixa blocos e joga no buffer até acabar ou parar."""
         nonlocal restante  # modificamos o valor de fora do escopo
 
         try:
@@ -180,10 +171,9 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
             fp.close()
             sock.close()
 
+    # Função que lê do socket sem passar do total;
+    # Ela é chamada pelo decodificador MP3
     def ler_mp3(n: int) -> bytes:
-        """
-        Chamado pelo decodificador MP3: lê do socket sem passar do total.
-        """
         nonlocal restante
 
         if sessao._parado or restante == 0:
@@ -209,10 +199,8 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
             restante -= len(chunk)
         return chunk
 
+    #Função que decodifica o MP3 conforme os bytes chegam
     def receber_mp3():
-        """
-        Thread de rede do MP3: decodifica conforme os bytes chegam.
-        """
         try:
             decodificador = miniaudio.stream_any(
                 _FonteRede(ler_mp3),
@@ -241,12 +229,9 @@ def iniciar_streaming(nome_arquivo: str) -> Sessao:
     threading.Thread(target=receber_mp3 if eh_mp3 else receber, daemon=True).start()
     return sessao
 
+# Função que pergunta ao servidor quais arquivos ele tem disponíveis (comando LIST);
+# Ela retorna uma lista de nomes ou [] se o servidor responder erro
 def listar_arquivos() -> list[str]:
-    """
-    Pergunta ao servidor quais arquivos ele tem disponíveis (comando LIST).
-
-    Retorna a lista de nomes, ou [] se o servidor responder erro.
-    """
     sock = socket.create_connection((HOST, PORT), timeout=10)
     try:
         sock.sendall(b"LIST\n")

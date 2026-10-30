@@ -1,17 +1,15 @@
 """
-Funções de leitura/envio de áudio do lado do servidor.
-
 Contrato com o cliente (definido em client/socket_client.py):
-  - `obter_info_streaming` retorna o JSON que o cliente espera receber
-    ANTES do WAV/MP3. Campos obrigatórios:
-        nome_arquivo, tamanho, taxa_bytes, tamanho_chunk
-  - `enviar_arquivo_streaming` envia o WAV/MP3 INTEIRO (cabeçalho + dados).
+  - `obter_info_streaming` retorna o JSON que o cliente espera receber antes do WAV/MP3.
+    Os campos obrigatórios são: nome_arquivo, tamanho, taxa_bytes, tamanho_chunk
+
+  - `enviar_arquivo_streaming` envia o WAV/MP3 inteiro (cabeçalho + dados).
     O cliente faz o parsing do cabeçalho sozinho.
 
-Garantia importante: o total de bytes enviados é exatamente `tamanho`
-(ou seja, `path.stat().st_size`). O cliente compara o recebido com
-`tamanho_dados` do cabeçalho WAV e reclama se faltar.
+O total de bytes enviados é exatamente `tamanho` (ou seja, `path.stat().st_size`).
+O cliente compara o recebido com `tamanho_dados` do cabeçalho WAV e reclama se faltar.
 """
+
 import socket
 import threading
 import time
@@ -28,9 +26,8 @@ from config import (
     TAMANHO_BUFFER,
 )
 
-
+# Função que retorna nomes dos arquivos de áudio disponíveis (ordem alfabética)
 def listar_arquivos_audio():
-    """Retorna nomes dos arquivos de áudio disponíveis (ordem alfabética)."""
     if not DIRETORIO_AUDIO.is_dir():
         return []
     return sorted(
@@ -39,13 +36,11 @@ def listar_arquivos_audio():
         if p.is_file() and p.suffix.lower() in EXTENSOES_SUPORTADAS
     )
 
-
+# Função que encontra o caminho absoluto de um arquivo dentro de DIRETORIO_AUDIO;
 def obter_caminho_arquivo(name: str) -> Path | None:
     """
-    Resolve nome → caminho absoluto dentro de DIRETORIO_AUDIO.
-
-    Rejeita: nomes vazios, extensões não suportadas, path traversal
-    (ex.: "../../etc/passwd") e arquivos inexistentes.
+    OBS: Essa função rejeita nomes vazios, extensões não suportadas, path
+    traversal (ex.: "../../etc/passwd") e arquivos inexistentes
     """
     if not name:
         return None
@@ -61,14 +56,12 @@ def obter_caminho_arquivo(name: str) -> Path | None:
         return path
     return None
 
-
+# Função que retorna os bytes por segundo que o áudio consome
 def obter_taxa_transmissao(path: Path) -> int:
     """
-    Bytes por segundo que o áudio consome.
-
-    Para .wav: lê do cabeçalho (preciso).
+    Para .wav: lê do cabeçalho.
     Para .mp3: tamanho do arquivo / duração.
-    Falha: usa FALLBACK_BITRATE_KBPS.
+    Se falhar: usa FALLBACK_BITRATE_KBPS.
     """
     if path.suffix.lower() == ".wav":
         try:
@@ -87,15 +80,13 @@ def obter_taxa_transmissao(path: Path) -> int:
             pass
     return FALLBACK_BITRATE_KBPS * 1000 // 8
 
-
+# Função que retorna um JSON de metadados que o cliente recebe antes do WAV
 def obter_info_streaming(path: Path) -> dict:
     """
-    JSON de metadados que o cliente recebe antes do WAV.
-
-    O cliente usa:
-      - `taxa_bytes`  → dimensionar o Buffer (taxa_bytes * SEGUNDOS_PRE_BUFFER)
-      - `tamanho`     → detectar fim de transferência truncada
-      - `tamanho_chunk` → só informativo
+    OBS: O cliente usa:
+      - `taxa_bytes` - dimensionar o Buffer (taxa_bytes * SEGUNDOS_PRE_BUFFER)
+      - `tamanho` - detectar fim de transferência truncada
+      - `tamanho_chunk` - só informativo
     """
     return {
         "nome_arquivo": path.name,
@@ -104,7 +95,7 @@ def obter_info_streaming(path: Path) -> dict:
         "tamanho_chunk": TAMANHO_BUFFER,
     }
 
-
+# Função que envia o arquivo em chunks de TAMANHO_BUFFER, em ritmo contínuo
 def enviar_arquivo_streaming(
     conn: socket.socket,
     path: Path,
@@ -112,22 +103,17 @@ def enviar_arquivo_streaming(
     stop_event: threading.Event,
 ) -> int:
     """
-    Envia o arquivo em chunks de TAMANHO_BUFFER, em ritmo contínuo.
-
     Estratégia:
-      - primeiros `bytes_prebuffer` bytes → enviados o mais rápido possível
-        (preenche o buffer do cliente sem atrasar o início)
-      - a partir daí → pacing: cada chunk é liberado no instante em que
-        o cliente teria terminado de tocar o anterior. Isso mantém o
-        buffer do cliente estável (sem encher nem esvaziar) e o envio
-        é contínuo do ponto de vista do cliente.
-
-    O relógio de referência é atualizado a cada chunk (não é fixo em
-    `start`), então atrasos pontuais de rede não se acumulam.
+      - primeiros `bytes_prebuffer` bytes são enviados o mais rápido possível
+        pra preencher o buffer do cliente sem atrasar o início
+      - depois, cada chunk é liberado de acordo com um relógio absoluto
+        (comeco + bytes_já_enviados / taxa); Com isso, atrasos pontuais são
+        compensados no chunk seguinte e o cliente fica sempre `pré-buffer`
+        segundos à frente, sem desvio acumulado.
     """
     bytes_prebuffer = int(taxa_bytes * SEGUNDOS_PRE_BUFFER)
     bytes_enviados = 0
-    start = time.monotonic()
+    comeco = time.monotonic()
 
     with open(path, "rb") as f:
         while not stop_event.is_set():
@@ -135,19 +121,13 @@ def enviar_arquivo_streaming(
             if not chunk:
                 break
 
-            # Momento em que este chunk começa a ser enviado.
-            inicio_chunk = time.monotonic()
+            if bytes_enviados > bytes_prebuffer:
+                liberar_em = comeco + (bytes_enviados - bytes_prebuffer) / taxa_bytes
+                delay = liberar_em - time.monotonic()
+                if delay > 0 and stop_event.wait(delay):
+                    break  # caso do servidor sendo desligado
+
             conn.sendall(chunk)
             bytes_enviados += len(chunk)
-
-            if bytes_enviados > bytes_prebuffer:
-                # Quanto tempo o cliente leva pra tocar este chunk.
-                duracao_chunk = len(chunk) / taxa_bytes
-                # Deadline relativo ao INÍCIO do envio deste chunk —
-                # evita acúmulo de atraso entre iterações.
-                deadline = inicio_chunk + duracao_chunk
-                delay = deadline - time.monotonic()
-                if delay > 0:
-                    stop_event.wait(delay)
 
     return bytes_enviados
