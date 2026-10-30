@@ -15,7 +15,7 @@ DIRETORIO_AUDIO = DIRETORIO_BASE / "audio_files"
 EXTENSOES_SUPORTADAS = (".wav", ".mp3")
 
 # Nome deve bater exatamente com um arquivo real (case-sensitive no Linux).
-DEFAULT_AUDIO = "(Zelda) Saria Song.wav"
+DEFAULT_AUDIO = "(Zelda) Kokiri Forest.wav"
 
 # ── Streaming ────────────────────────────────────────────────────────
 # O cliente usa este valor para dimensionar o pré-buffer local.
