@@ -1,4 +1,6 @@
 import os
+import select
+import sys
 import time
 
 from client import playlist, socket_client
@@ -18,10 +20,29 @@ def limpar_terminal():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def enter_pressionado(espera: float) -> bool:
+    """
+    Retorna True se o ENTER for pressionado até o tempo que foi setado, sem travar como o input().
+    """
+    if os.name == "nt":
+        import msvcrt
+
+        time.sleep(espera)
+        while msvcrt.kbhit():
+            if msvcrt.getwch() in "\r\n":
+                return True
+        return False
+
+    if select.select([sys.stdin], [], [], espera)[0]:
+        sys.stdin.readline()
+        return True
+    return False
+
+
 def tocar_musica(caminho: str):
     """
     Faz o ciclo completo de uma música: conecta, espera pré-buffer,
-    toca até ENTER, e garante o cleanup no finally.
+    toca até ENTER ou até a música acabar, e garante o cleanup no finally.
 
     Isolar isso em uma função deixa o loop do menu curto e legível,
     e o finally cuida de parar/reprodução mesmo se algo der errado no meio.
@@ -38,11 +59,12 @@ def tocar_musica(caminho: str):
             raise RuntimeError(sessao.get_erro())
 
         # Começa a tocar. A partir daqui a reprodução roda em thread própria
-        # do sounddevice; este código só aguarda o ENTER.
+        # do sounddevice; este código só aguarda o ENTER ou o fim da música.
         reproducao = playlist.iniciar_reproducao(sessao.buffer, sessao.formato)
 
         print(" Pressione ENTER a qualquer momento para parar a música.")
-        input()  # bloqueia até o usuário apertar ENTER
+        while reproducao.active and not enter_pressionado(0.1):
+            pass
 
         # Pode ter havido erro de rede durante a reprodução (não fatal).
         if sessao.get_erro():
